@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Inclusão Escolar</title>
+<style>
+:root{--blue:#1565c0;--pale:#e3f2fd;--ink:#172033;--muted:#64748b;--line:#dbe3ee;--bg:#f6f8fc;--white:#fff;--red:#b42318;--green:#067647}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 Inter,system-ui,-apple-system,Segoe UI,sans-serif}
+header{background:var(--white);border-bottom:1px solid var(--line);padding:14px 22px;display:flex;justify-content:space-between;align-items:center;gap:12px;position:sticky;top:0}
+.brand{font-size:20px;font-weight:800;color:var(--blue)}.muted{color:var(--muted)}main{max-width:1100px;margin:28px auto;padding:0 16px}.login{max-width:430px;margin:8vh auto;background:white;padding:26px;border:1px solid var(--line);border-radius:16px;box-shadow:0 12px 36px #1e293b0d}
+h1{font-size:27px;margin:0 0 6px}h2{font-size:18px;margin:0 0 14px}.card{background:white;border:1px solid var(--line);border-radius:14px;padding:18px;margin:0 0 16px;box-shadow:0 4px 16px #1e293b06}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px}.stats{font-size:28px;font-weight:800;color:var(--blue)}label{display:block;font-weight:650;margin:12px 0 5px}input,select,textarea{width:100%;padding:11px 12px;border:1px solid #cbd5e1;border-radius:9px;font:inherit;background:white}textarea{min-height:120px;resize:vertical}.btn{background:var(--blue);color:white;border:0;border-radius:9px;padding:10px 14px;font:inherit;font-weight:700;cursor:pointer}.btn.secondary{background:var(--pale);color:var(--blue)}.btn.danger{background:#fee4e2;color:var(--red)}.row{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap}.tabs{display:flex;gap:8px;flex-wrap:wrap;margin:18px 0}.tab{border:1px solid var(--line);background:white;border-radius:9px;padding:9px 12px;cursor:pointer}.tab.active{background:var(--pale);border-color:#90caf9;color:var(--blue);font-weight:700}.notice{padding:12px 14px;background:#eff8ff;border:1px solid #b2ddff;border-radius:10px;margin:0 0 16px}.error{color:var(--red);margin:10px 0}.success{color:var(--green)}.item{padding:13px 0;border-top:1px solid var(--line)}.item:first-child{border-top:0}.hidden{display:none!important}.small{font-size:13px}.pill{font-size:12px;background:var(--pale);color:var(--blue);padding:3px 8px;border-radius:99px}
+@media(max-width:600px){header{padding:12px 15px}main{margin:18px auto}.login{margin:5vh 12px;padding:20px}}
+</style></head>
+<body>
+<header><div class="brand">Inclusão Escolar</div><div id="headActions"></div></header>
+<main id="app"></main>
+<script>
+const app=document.querySelector('#app'), headActions=document.querySelector('#headActions');
+let token=localStorage.getItem('ie_token')||'', user=null, tab='overview', cache={schools:[],users:[],classrooms:[],students:[],reports:[]};
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+async function api(path,opts={}){const r=await fetch('/api'+path,{...opts,headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{}),...(opts.headers||{})}});let data={};try{data=await r.json()}catch{}if(!r.ok)throw Error(data.error||'Não foi possível concluir a solicitação.');return data}
+function formLogin(error=''){headActions.innerHTML='';app.innerHTML=`<section class="login"><h1>Acesse sua conta</h1><p class="muted">Entre com seu e-mail institucional para abrir o painel autorizado.</p>${error?`<p class="error">${esc(error)}</p>`:''}<form id="loginForm"><label for="email">E-mail</label><input id="email" type="email" autocomplete="username" required><label for="password">Senha</label><input id="password" type="password" autocomplete="current-password" required><p class="small muted">O acesso depende de uma conta criada pelo administrador da plataforma ou da escola.</p><button class="btn" style="width:100%">Entrar</button></form></section>`;document.querySelector('#loginForm').onsubmit=async e=>{e.preventDefault();try{const d=await api('/auth/login',{method:'POST',body:JSON.stringify({email:email.value,password:password.value})});token=d.token;localStorage.setItem('ie_token',token);user=d.user;await dashboard()}catch(err){formLogin(err.message)}}}
+function msg(e){return `<p class="error">${esc(e.message||String(e))}</p>`}
+function btn(label,onclick,secondary=true){return `<button class="btn ${secondary?'secondary':''}" onclick="${onclick}">${esc(label)}</button>`}
+async function refresh(){
+  let schoolsData, usersData=[], classroomsData, studentsData=[], reportsData=[];
+
+  if (user.role === 'owner') {
+    const [schools, users, classrooms] = await Promise.all([
+      api('/schools'),
+      api('/users'),
+      api('/classrooms')
+    ]);
+
+    schoolsData = schools;
+    usersData = users.users || [];
+    classroomsData = classrooms;
+  } else if (user.role === 'coordinator') {
+    const [schools, users, classrooms, students, reports] = await Promise.all([
+      api('/schools'),
+      api('/users'),
+      api('/classrooms'),
+      api('/students'),
+      api('/reports')
+    ]);
+
+    schoolsData = schools;
+    usersData = users.users || [];
+    classroomsData = classrooms;
+    studentsData = students;
+    reportsData = reports;
+  } else {
+    const [schools, classrooms, students, reports] = await Promise.all([
+      api('/schools'),
+      api('/classrooms'),
+      api('/students'),
+      api('/reports')
+    ]);
+
+    schoolsData = schools;
+    classroomsData = classrooms;
+    studentsData = students;
+    reportsData = reports;
+  }
+
+  cache = {
+    schools: schoolsData.schools || [],
+    users: usersData,
+    classrooms: classroomsData.classrooms || [],
+    students: studentsData.students || [],
+    reports: reportsData.reports || []
+  };
+}
+
+async function dashboard(){try{user=(await api('/me')).user;await refresh();render()}catch(e){token='';user=null;localStorage.removeItem('ie_token');formLogin(e.message)}}
+function render(){headActions.innerHTML=`<span class="muted small">${esc(user.name)} · ${esc({owner:'Proprietário',coordinator:'Coordenador',teacher:'Professor'}[user.role])}</span> ${btn('Sair','logout()',true)}`;
+const tabs=user.role==='owner'?[['overview','Resumo'],['schools','Escolas'],['users','Coordenadores']]:user.role==='coordinator'?[['overview','Resumo'],['users','Professores'],['classrooms','Turmas'],['students','Alunos'],['reports','Relatórios']]:[['overview','Resumo'],['students','Meus alunos'],['reports','Relatórios']];
+app.innerHTML=`<div class="row"><div><h1>${esc({owner:'Painel da plataforma',coordinator:'Painel da escola',teacher:'Painel do professor'}[user.role])}</h1><p class="muted">Ações disponíveis de acordo com seu perfil e sua escola.</p></div></div><div class="tabs">${tabs.map(([id,label])=>`<button class="tab ${tab===id?'active':''}" onclick="go('${id}')">${label}</button>`).join('')}</div><div id="content"></div>`;
+renderTab()}
+function go(t){tab=t;render()}
+function logout(){token='';user=null;localStorage.removeItem('ie_token');formLogin()}
+function card(title,body){return `<section class="card"><h2>${title}</h2>${body}</section>`}
+function renderTab(){const c=document.querySelector('#content');const {schools,users,classrooms,students,reports}=cache;
+if(tab==='overview'){c.innerHTML=`<div class="grid">${card('Escolas',`<div class="stats">${schools.length}</div>`)}${user.role!=='owner'?card('Turmas',`<div class="stats">${classrooms.length}</div>`):''}${user.role!=='owner'?card('Alunos autorizados',`<div class="stats">${students.length}</div>`):''}${user.role!=='owner'?card('Relatórios',`<div class="stats">${reports.length}</div>`):''}</div><div class="notice">Os dados são consultados no servidor. Professores não podem cadastrar escolas, usuários, turmas ou alunos.</div>`;return}
+if(tab==='schools'){c.innerHTML=(user.role==='owner'?card('Cadastrar escola',`<form id="schoolForm"><label>Nome da escola</label><input name="name" required><label>E-mail de contato (opcional)</label><input name="email" type="email"><p><button class="btn">Cadastrar escola</button></p></form>`):'')+card('Escolas cadastradas',schools.map(s=>`<div class="item"><b>${esc(s.name)}</b> <span class="pill">${esc(s.status)}</span><div class="muted small">${esc(s.email||'Sem e-mail de contato')} · ID ${s.id}</div></div>`).join('')||'<p class="muted">Nenhuma escola cadastrada.</p>');const f=document.querySelector('#schoolForm');if(f)f.onsubmit=async e=>{e.preventDefault();try{const d=Object.fromEntries(new FormData(f));await api('/schools',{method:'POST',body:JSON.stringify(d)});await refresh();render()}catch(err){c.insertAdjacentHTML('afterbegin',msg(err))}};return}
+if(tab==='users'){let form='';if(user.role==='owner'){form=card('Cadastrar coordenador',`<form id="userForm"><label>Nome completo</label><input name="name" required><label>E-mail</label><input name="email" type="email" required><label>Senha inicial (mínimo 12 caracteres)</label><input name="password" type="password" minlength="12" required><label>Escola</label><select name="schoolId" required>${schools.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('')}</select><input type="hidden" name="role" value="coordinator"><p><button class="btn">Criar coordenador</button></p></form>`)}else{form=card('Cadastrar professor',`<form id="userForm"><label>Nome completo</label><input name="name" required><label>E-mail</label><input name="email" type="email" required><label>Senha inicial (mínimo 12 caracteres)</label><input name="password" type="password" minlength="12" required><input type="hidden" name="role" value="teacher"><p><button class="btn">Criar professor</button></p></form>`)}c.innerHTML=form+card(user.role==='owner'?'Coordenadores e professores':'Professores',users.map(u=>`<div class="item"><b>${esc(u.name)}</b> <span class="pill">${esc(u.role)}</span><div class="muted small">${esc(u.email)} · escola ${esc(u.school_id||'—')}</div></div>`).join('')||'<p class="muted">Nenhum usuário cadastrado.</p>');const f=document.querySelector('#userForm');if(f)f.onsubmit=async e=>{e.preventDefault();try{const d=Object.fromEntries(new FormData(f));if(!d.schoolId)delete d.schoolId;await api('/users',{method:'POST',body:JSON.stringify(d)});await refresh();render()}catch(err){c.insertAdjacentHTML('afterbegin',msg(err))}};return}
+if(tab==='classrooms'){c.innerHTML=card('Criar turma',`<form id="classForm"><label>Nome da turma</label><input name="name" required placeholder="Ex.: 4º Ano A"><p><button class="btn">Cadastrar turma</button></p></form>`)+card('Turmas',classrooms.map(x=>`<div class="item"><b>${esc(x.name)}</b> <span class="muted small">ID ${x.id}</span></div>`).join('')||'<p class="muted">Nenhuma turma cadastrada.</p>');document.querySelector('#classForm').onsubmit=async e=>{e.preventDefault();try{await api('/classrooms',{method:'POST',body:JSON.stringify(Object.fromEntries(new FormData(e.target)))});await refresh();render()}catch(err){c.insertAdjacentHTML('afterbegin',msg(err))}};return}
+if(tab==='students'){let form='';if(user.role==='coordinator')form=card('Cadastrar aluno',`<form id="studentForm"><label>Nome do aluno</label><input name="name" required><label>Turma</label><select name="classroomId"><option value="">Sem turma</option>${classrooms.map(x=>`<option value="${x.id}">${esc(x.name)}</option>`).join('')}</select><p><button class="btn">Cadastrar aluno</button></p></form>`);c.innerHTML=form+card(user.role==='teacher'?'Alunos das minhas turmas':'Alunos da escola',students.map(s=>`<div class="item"><b>${esc(s.name)}</b><div class="muted small">Aluno ID ${s.id}</div></div>`).join('')||'<p class="muted">Nenhum aluno visível para este perfil.</p>');const f=document.querySelector('#studentForm');if(f)f.onsubmit=async e=>{e.preventDefault();try{const d=Object.fromEntries(new FormData(f));if(!d.classroomId)delete d.classroomId;else d.classroomId=Number(d.classroomId);await api('/students',{method:'POST',body:JSON.stringify(d)});await refresh();render()}catch(err){c.insertAdjacentHTML('afterbegin',msg(err))}};return}
+if(tab==='reports'){c.innerHTML=card('Criar relatório',`<form id="reportForm"><label>Aluno</label><select name="studentId" required>${students.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('')}</select><label>Título</label><input name="title" required><label>Relatório</label><textarea name="content" required></textarea><p><button class="btn">Salvar relatório</button></p></form>`)+card('Relatórios registrados',reports.map(r=>`<div class="item"><b>${esc(r.title)}</b><div>${esc(r.student_name)} · ${esc(r.author_name)}</div><p>${esc(r.content)}</p><div class="muted small">${new Date(r.created_at).toLocaleString('pt-BR')}</div></div>`).join('')||'<p class="muted">Nenhum relatório registrado.</p>');const f=document.querySelector('#reportForm');if(f)f.onsubmit=async e=>{e.preventDefault();try{const d=Object.fromEntries(new FormData(f));d.studentId=Number(d.studentId);await api('/reports',{method:'POST',body:JSON.stringify(d)});await refresh();render()}catch(err){c.insertAdjacentHTML('afterbegin',msg(err))}};return}
+}
+if(token)dashboard();else formLogin();
+</script></body></html>
